@@ -5,9 +5,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.regex.MatchResult;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.apache.mina.core.service.IoHandler;
 import org.apache.mina.core.session.IdleStatus;
@@ -29,8 +26,7 @@ public class HelloServerHandler implements IoHandler {
 	
 	public void exceptionCaught(IoSession session, Throwable cause)
 			throws Exception {
-		cause.printStackTrace();
-		session.close(true);
+//		cause.printStackTrace();
 	}
 
 	public void inputClosed(IoSession session) throws Exception {
@@ -38,34 +34,33 @@ public class HelloServerHandler implements IoHandler {
 	}
 
 	public void messageReceived(IoSession session, Object message) throws Exception {
-		String str = message.toString();
-		String user = null;
-		
-		//从消息中获取用户名
-		Pattern p = Pattern.compile("(客户\\:)([\\sa-z]*)(已连接!)");
-		Matcher m = p.matcher(str);
-		if(m.matches()){
-			MatchResult result = m.toMatchResult();
-			user = result.group(2).replace(" ", "");
+		Message msg = (Message)message;
+		int command = msg.getCommand();
+		String user = msg.getUser();
+		switch (command) {
+		case Command.QUIT:
+			session.write(msg);
+			sessionClosed(session);
+			break;
+		case Command.BROADCAST:
+			Date date = new Date();
+			broadCast(user + " " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date) +" "+msg.getMsgContent());//发送广播
+			break;
+		case Command.LOGIN:
 			//保存当前会话
 			sessions.add(session);
 			session.setAttribute("user", user);
 	        MdcInjectionFilter.setProperty(session, "user", user);
 	        users.add(user);
 	        broadCast("用户:"+user+"加入了会话!");//发送广播
+			break;
+		default:
+			broadCast("阁下莫非来自外太空?地球很危险,快回火星去吧!");//发送广播
+			break;
 		}
-        
-		if(str.trim().equalsIgnoreCase("quit")){
-			session.close(true);
-			return;
-		}
-		
-		Date date = new Date();
-		session.write("服务端返回数据:" + str + " " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(date));
 	}
 
 	public void messageSent(IoSession session, Object message) throws Exception {
-//		System.out.println("服务端消息已发送!");
 	}
 
 	public void sessionClosed(IoSession session) throws Exception {
@@ -80,7 +75,6 @@ public class HelloServerHandler implements IoHandler {
 	}
 
 	public void sessionIdle(IoSession session, IdleStatus status) throws Exception {
-//		System.out.println( "IDLE " + session.getIdleCount( status ));
 	}
 
 	public void sessionOpened(IoSession session) throws Exception {
@@ -95,7 +89,7 @@ public class HelloServerHandler implements IoHandler {
         synchronized (sessions) {
             for (IoSession session : sessions) {
                 if (session.isConnected()) {
-                    session.write("系统广播:" + message);
+                    session.write(message);
                 }
             }
         }
@@ -117,8 +111,13 @@ public class HelloServerHandler implements IoHandler {
         synchronized (sessions) {
             for (IoSession session : sessions) {
                 if (name.equals(session.getAttribute("user"))) {
+//                	Message msg = new Message();
+//        			msg.setId(session.getId());
+//        			msg.setUser("admin");
+//        			msg.setMsgContent("用户" + name + "被踢出会话.");
+//    				msg.setCommand(Command.QUIT);
+//    				session.write(msg);
                 	broadCast("用户" + name + "被踢出会话.");
-                    session.close(true);
                     break;
                 }
             }
